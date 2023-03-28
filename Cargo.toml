@@ -1,0 +1,12 @@
+[package]
+name = "omicron"
+authors = ["NotNite <hi@notnite.com>"]
+license = "MIT"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chumsky = { git = "https://github.com/zesterer/chumsky", version = "1.0.0-alpha.3" }
+serde = { version = "1.0.159", features = ["derive"] }
+serde_json = "1.0.95"
+thiserror = "1.0.40"
