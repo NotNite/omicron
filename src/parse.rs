@@ -1,4 +1,4 @@
-use crate::{FunctionArgument, ParsedType};
+use crate::{ParsedType, TypeArgument};
 use chumsky::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -11,15 +11,13 @@ pub struct Attr {
 pub enum Expr {
     Name(String),
     Extends(String),
+    Comment(String),
 
     Func {
         name: String,
-        args: Vec<FunctionArgument>,
+        args: Vec<TypeArgument>,
     },
-    Var {
-        name: String,
-        r#type: ParsedType,
-    },
+    Var(TypeArgument),
     Attr(Vec<Attr>),
 }
 
@@ -76,6 +74,20 @@ fn attr_value<'a>() -> impl Parser<'a, &'a str, String> {
         .map(|(_, value)| value)
 }
 
+fn typed_item<'a>() -> impl Parser<'a, &'a str, TypeArgument> {
+    type_name()
+        .then(just("[]").or_not())
+        .then(just("*").or_not())
+        .then_ignore(text::whitespace())
+        .then(func_var_name())
+        .map(|(((type_name, arr), ptr), name)| TypeArgument {
+            name,
+            r#type: type_name,
+            is_pointer: ptr.is_some(),
+            is_array: arr.is_some(),
+        })
+}
+
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<Expr>> {
     let name_expr = text::keyword("name")
         .then(text::whitespace())
@@ -87,36 +99,24 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<Expr>> {
         .then(struct_name())
         .map(|(_, name)| Expr::Extends(name));
 
-    let typed_item = type_name()
-        .then(just("*").or_not())
-        .then(text::whitespace())
-        .then(func_var_name())
-        .map(|(((type_name, ptr), _), name)| (type_name, name, ptr.is_some()));
-
     let this_item = text::keyword("this")
         .then(just("*").or_not())
-        .map(|(_, op)| (ParsedType::This, "this".to_string(), op.is_some()));
+        .map(|(_, op)| TypeArgument {
+            name: "this".to_string(),
+            r#type: ParsedType::This,
+            is_pointer: op.is_some(),
+            is_array: false,
+        });
 
     let func_items = this_item
-        .or(typed_item)
+        .or(typed_item())
         .separated_by(just(",").then(text::whitespace()))
         .collect::<Vec<_>>();
 
-    let func_args = func_items
-        .delimited_by(
-            just("(").then(text::whitespace()),
-            just(")").then(text::whitespace()),
-        )
-        .map(|items| {
-            items
-                .into_iter()
-                .map(|(type_name, name, ptr)| FunctionArgument {
-                    name,
-                    r#type: type_name,
-                    is_pointer: ptr,
-                })
-                .collect()
-        });
+    let func_args = func_items.delimited_by(
+        just("(").then(text::whitespace()),
+        just(")").then(text::whitespace()),
+    );
 
     let func_expr = text::keyword("func")
         .then(text::whitespace())
@@ -126,14 +126,9 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<Expr>> {
         .map(|(((_, name), _), args)| Expr::Func { name, args });
 
     let var_expr = text::keyword("var")
-        .then(text::whitespace())
-        .then(type_name())
-        .then(text::whitespace())
-        .then(func_var_name())
-        .map(|(((_, type_name), _), name)| Expr::Var {
-            name,
-            r#type: type_name,
-        });
+        .then_ignore(text::whitespace())
+        .then(typed_item())
+        .map(|(_, typed)| Expr::Var(typed));
 
     let attr_items = func_var_name()
         .then_ignore(text::whitespace())
@@ -142,7 +137,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<Expr>> {
         .separated_by(just(",").then(text::whitespace()))
         .collect::<Vec<_>>();
 
-    let attr = attr_items
+    let attr_expr = attr_items
         .delimited_by(
             just("[").then(text::whitespace()),
             just("]").then(text::whitespace()),
@@ -152,21 +147,22 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Vec<Expr>> {
                 .into_iter()
                 .map(|(name, value)| Attr { name, value })
                 .collect::<Vec<_>>()
-        });
+        })
+        .map(Expr::Attr);
 
-    let attr_expr = attr.map(Expr::Attr);
+    let comment_expr = just("#")
+        .then(any().and_is(just("\n").not()).repeated())
+        .padded()
+        .map(|(comment, _)| Expr::Comment(comment.to_string()));
 
     let expr = name_expr
         .or(extends_expr)
         .or(func_expr)
         .or(var_expr)
-        .or(attr_expr);
+        .or(attr_expr)
+        .or(comment_expr);
 
-    expr
-        // newline between exprs
-        .then(text::whitespace())
-        .map(|(expr, _)| expr)
-        // go on forever
+    expr.then_ignore(text::whitespace())
         .repeated()
         .at_least(1)
         .collect()

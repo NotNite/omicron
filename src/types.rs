@@ -21,16 +21,14 @@ pub enum ParsedType {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedVariable {
-    pub name: String,
-    pub r#type: ParsedType,
-
+    pub type_argument: TypeArgument,
     pub offset: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedFunction {
     pub name: String,
-    pub args: Vec<FunctionArgument>,
+    pub args: Vec<TypeArgument>,
 
     pub sig: Option<String>,
     pub vfunc: Option<i32>,
@@ -46,8 +44,9 @@ pub struct ParsedStruct {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FunctionArgument {
+pub struct TypeArgument {
     pub name: String,
     pub r#type: ParsedType,
     pub is_pointer: bool,
+    pub is_array: bool,
 }

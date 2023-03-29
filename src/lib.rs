@@ -75,7 +75,7 @@ pub fn parse(input: String) -> Result<ParsedStruct, Error> {
         match node {
             Expr::Attr(attr) => attr_cache.extend(attr),
 
-            Expr::Var { name, r#type } => {
+            Expr::Var(r#type) => {
                 let offset = attr_cache
                     .iter()
                     .find(|x| x.name == "offset")
@@ -83,9 +83,7 @@ pub fn parse(input: String) -> Result<ParsedStruct, Error> {
                     .transpose()?;
 
                 let var = ParsedVariable {
-                    name: name.clone(),
-                    r#type: r#type.clone(),
-
+                    type_argument: r#type.clone(),
                     offset: offset.unwrap_or_default(),
                 };
 
